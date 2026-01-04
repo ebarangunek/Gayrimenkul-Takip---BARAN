@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- 1. SAYFA AYARLARI (Modern Görünüm İçin İlk Adım) ---
 st.set_page_config(
-    page_title="BARAN Gayrimenkul Takip- Pro CRM",
+    page_title="REMAX/Park - Pro CRM",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -62,7 +62,7 @@ def get_google_sheet_data(sheet_name):
             creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
             
         client = gspread.authorize(creds)
-        sheet = client.open("Remax_Veritabani").worksheet(sheet_name)
+        sheet = client.open("baran_gayrimenkul_veritabani").worksheet(sheet_name)
         data = sheet.get_all_records()
         return data, sheet
     except Exception as e:
