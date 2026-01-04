@@ -201,7 +201,7 @@ def main():
     # --- SAYFA: MÜŞTERİ İLİŞKİLERİ ---
     elif menu == "👥 Müşteri İlişkileri":
         st.title("Müşteri Veritabanı")
-        tab_m1, tab_m2 = st.tabs(["🔍 Müşteri Bul", "busts_in_silhouette Müşteri Ekle"])
+        tab_m1, tab_m2 = st.tabs(["🔍 Müşteri Bul", "Müşteri Ekle"])
         
         with tab_m1:
             data_m, _ = get_google_sheet_data("Musteriler")
@@ -236,7 +236,7 @@ def main():
                     new_cust = [tarih, ad, tel, talep, butce, notlar]
                     _, sheet_m = get_google_sheet_data("Musteriler")
                     add_row_to_sheet(sheet_m, new_cust)
-                    
+
     # --- SAYFA: PORTFÖY YÖNETİMİ ---
     elif menu == "🏠 Portföy Yönetimi":
         st.title("Portföy Yönetimi")
