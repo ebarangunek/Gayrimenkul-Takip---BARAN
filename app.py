@@ -5,65 +5,91 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import time
 
-# --- 1. AYARLAR VE CSS ---
+# --- 1. AYARLAR VE HİBRİT TASARIM (KURUMSAL + MOBİL) ---
 st.set_page_config(
-    page_title="BARAN | Gayrimenkul OS",
+    page_title="BARAN | Gayrimenkul Takip",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Profil Fotoğrafı (Varsayılan bir ikon koydum, linki değiştirebilirsin)
+# Profil Fotoğrafın
 PROFIL_FOTO_URL = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png" 
 
+# --- CSS SİHRİ (KARANLIK MOD + CAM EFEKTİ) ---
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stApp {
+        background: radial-gradient(circle at top left, #1b202b, #0e1117);
+    }
+    
+    /* Metrik Kartları (Glassmorphism) */
     div[data-testid="stMetric"] {
-        background-color: #1E1E1E;
-        border: 1px solid #333;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         padding: 15px;
-        border-radius: 10px;
+        border-radius: 15px;
+        transition: transform 0.2s;
     }
-    .stButton>button {
-        border-radius: 8px;
-        font-weight: bold;
-        transition: 0.3s;
+    div[data-testid="stMetric"]:hover {
+        transform: scale(1.02);
+        border-color: #DC3545;
     }
+    
+    /* Yan Menü */
     section[data-testid="stSidebar"] {
-        background-color: #111;
+        background-color: #0b0d11;
+        border-right: 1px solid #21262d;
+    }
+    
+    /* Butonlar */
+    .stButton>button {
+        border-radius: 10px;
+        font-weight: 600;
+        height: 3em;
+        background: linear-gradient(135deg, #DC3545 0%, #a71d2a 100%);
+        border: none;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+    }
+    .stButton>button:hover {
+        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.5);
+    }
+    
+    /* Tablolar */
+    div[data-testid="stDataFrame"] {
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 10px;
+        padding: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. YARDIMCI FONKSİYONLAR (GÜÇLENDİRİLDİ) ---
+# --- 2. YARDIMCI FONKSİYONLAR ---
 def clean_currency(value):
-    """Fiyat verilerini temizler."""
     try:
         if isinstance(value, str):
             clean_str = ''.join(filter(str.isdigit, value))
             return int(clean_str) if clean_str else 0
         return int(value)
-    except:
-        return 0
+    except: return 0
 
 def clean_phone(value):
-    """Telefon numaralarını temizler (Sayı veya String gelse de çalışır)."""
     try:
-        # Gelen veri ne olursa olsun önce stringe çevir, sonra temizle
         val_str = str(value)
-        clean_str = ''.join(filter(str.isdigit, val_str))
-        return clean_str
-    except:
-        return ""
+        return ''.join(filter(str.isdigit, val_str))
+    except: return ""
 
 def clean_coordinates(value):
-    """Koordinatları (Virgül/Nokta) temizler."""
     try:
-        # Virgülü noktaya çevir ve float yap
-        val_str = str(value).replace(',', '.')
-        return float(val_str)
-    except:
-        return None
+        return float(str(value).replace(',', '.'))
+    except: return None
 
 # --- 3. VERİTABANI BAĞLANTISI ---
 @st.cache_resource(show_spinner=False)
@@ -71,50 +97,45 @@ def get_google_sheet_data(sheet_name):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = None
     try:
-        # 1. Yerel Dosya
         creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
     except FileNotFoundError:
-        # 2. Cloud Secrets
         try:
             if "gcp_service_account" in st.secrets:
                 creds_dict = st.secrets["gcp_service_account"]
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        except:
-            return [], None
+        except: return [], None
 
     if creds:
         try:
             client = gspread.authorize(creds)
-            sheet = client.open("baran_gayrimenkul_veritabani").worksheet(sheet_name)
-            data = sheet.get_all_records()
-            return data, sheet
-        except Exception as e:
-            st.error(f"Veritabanı Hatası: {e}")
-            return [], None
+            # Eğer Ajanda sayfası yoksa hata vermemesi için try-except
+            try:
+                sheet = client.open("baran_gayrimenkul_veritabani").worksheet(sheet_name)
+                return sheet.get_all_records(), sheet
+            except:
+                return [], None
+        except: return [], None
     return [], None
 
 # --- 4. CRUD İŞLEMLERİ ---
 def add_row_to_sheet(sheet_object, row_data):
     try:
         sheet_object.append_row(row_data)
-        st.toast("✅ Kayıt Eklendi!", icon="🎉")
+        st.toast("✅ İşlem Başarılı!", icon="🚀")
         time.sleep(1)
-    except Exception as e:
-        st.error(f"Hata: {e}")
+    except Exception as e: st.error(f"Hata: {e}")
 
-def delete_row_from_sheet(sheet_object, title_to_delete):
+def delete_row_from_sheet(sheet_object, col_val, col_index=2):
     try:
-        titles = sheet_object.col_values(2)
-        if title_to_delete in titles:
-            row_index = titles.index(title_to_delete) + 1
-            sheet_object.delete_rows(row_index)
-            st.toast(f"🗑️ '{title_to_delete}' silindi!", icon="✅")
+        vals = sheet_object.col_values(col_index)
+        if col_val in vals:
+            r_idx = vals.index(col_val) + 1
+            sheet_object.delete_rows(r_idx)
+            st.toast("🗑️ Silindi!", icon="✅")
             time.sleep(1)
             st.rerun()
-        else:
-            st.warning("Kayıt bulunamadı.")
-    except Exception as e:
-        st.error(f"Hata: {e}")
+        else: st.warning("Kayıt bulunamadı.")
+    except Exception as e: st.error(f"Hata: {e}")
 
 # --- 5. ANA UYGULAMA ---
 def main():
@@ -126,192 +147,184 @@ def main():
 
     # --- YAN MENÜ ---
     with st.sidebar:
-        c_img, c_txt = st.columns([1, 3])
-        with c_img:
-            st.image(PROFIL_FOTO_URL, width=60)
-        with c_txt:
+        c1, c2 = st.columns([1, 2])
+        with c1: st.image(PROFIL_FOTO_URL, width=70)
+        with c2: 
             st.write("**Baran Günek**")
-            st.caption("Gayrimenkul Danışmanı")
+            st.caption("REMAX/Park")
         
         st.divider()
-        menu = st.radio("Panel", ["📊 Dashboard", "🏠 Portföy Yönetimi", "🗺️ Harita & Analiz", "🤖 Akıllı Eşleşme", "👥 Müşteriler"], key="secili_menü")
         
-        # Hedef Çubuğu (Hatasız)
+        # Menü İkonlu
+        menu = st.radio(
+            "Navigasyon", 
+            ["📊 Dashboard", "📅 Ajanda & Görevler", "🏠 Portföy", "👥 Müşteriler", "🗺️ Harita", "🤖 Eşleşme"],
+            key="secili_menü"
+        )
+        
+        # Ciro Hedefi
         st.write("---")
-        st.subheader("🎯 Ciro Hedefi")
+        st.subheader("🎯 Mart Hedefi")
         data_p, _ = get_google_sheet_data("Portfoy")
         mevcut_ciro = 0
         if data_p:
-            df_temp = pd.DataFrame(data_p)
-            if 'Fiyat' in df_temp.columns:
-                 mevcut_ciro = sum([clean_currency(x) for x in df_temp['Fiyat']])
-        progress = min(mevcut_ciro / 15000000, 1.0)
-        st.progress(progress)
-        st.caption(f"{(mevcut_ciro/1000000):.1f}M / 15.0M TL")
+            df_t = pd.DataFrame(data_p)
+            if 'Fiyat' in df_t.columns:
+                mevcut_ciro = sum([clean_currency(x) for x in df_t['Fiyat']])
+        
+        hedef = 20000000
+        prog = min(mevcut_ciro / hedef, 1.0)
+        st.progress(prog)
+        st.caption(f"{(mevcut_ciro/1000000):.1f}M / {(hedef/1000000):.1f}M TL")
 
-    # --- DASHBOARD ---
+    # --- SAYFA: DASHBOARD ---
     if menu == "📊 Dashboard":
-        st.title("Yönetim Paneli")
+        # Hoşgeldin Bannerı
+        st.markdown(f"""
+        <div style="background: linear-gradient(90deg, #1e2530 0%, #161b22 100%); padding: 25px; border-radius: 15px; border-left: 5px solid #DC3545; margin-bottom: 20px;">
+            <h2 style="margin:0; color:white;">Merhaba, Baran 👋</h2>
+            <p style="margin:5px 0 0 0; color:#aaa;">Bugün işleri büyütmek için harika bir gün. Ajandanda bekleyen görevlerin var.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Metrikler
         data_p, _ = get_google_sheet_data("Portfoy")
         data_m, _ = get_google_sheet_data("Musteriler")
+        data_a, _ = get_google_sheet_data("Ajanda")
         
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📦 İlanlar", len(data_p) if data_p else 0)
-        c2.metric("👥 Müşteriler", len(data_m) if data_m else 0)
-        c3.metric("💰 Beklenen Kazanç", f"{(mevcut_ciro * 0.02)/1000:,.0f}k ₺")
-        c4.metric("📅 Randevu", "2", "Bugün")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("📦 İlanlar", len(data_p) if data_p else 0)
+        col2.metric("👥 Müşteriler", len(data_m) if data_m else 0)
+        
+        # Ajanda Sayısı
+        gorev_sayisi = 0
+        if data_a:
+            df_a = pd.DataFrame(data_a)
+            # Sadece "Bekliyor" olanları say
+            if 'Durum' in df_a.columns:
+                gorev_sayisi = len(df_a[df_a['Durum'] == 'Bekliyor'])
+        
+        col3.metric("📝 Bekleyen Görev", gorev_sayisi, "Önemli")
+        col4.metric("💰 Portföy Değeri", f"{(mevcut_ciro/1000000):.1f}M ₺")
 
-        st.subheader("🚀 Hızlı İşlemler")
-        b1, b2 = st.columns(2)
-        with b1:
-            st.button("➕ İlan Ekle", on_click=sayfa_degistir, args=("🏠 Portföy Yönetimi",), use_container_width=True)
-        with b2:
-            st.button("🔍 Eşleşme", on_click=sayfa_degistir, args=("🤖 Akıllı Eşleşme",), use_container_width=True)
+        # AJANDA ÖZETİ (Anasayfada Görünen)
+        st.subheader("📅 Günün Ajandası")
+        if data_a:
+            df_a = pd.DataFrame(data_a)
+            # Tarihe göre sırala
+            if not df_a.empty:
+                 # Sadece Bekleyenleri Göster
+                df_bekleyen = df_a[df_a['Durum'] == 'Bekliyor'].tail(5) # Son 5 görev
+                
+                for i, row in df_bekleyen.iterrows():
+                    oncelik_renk = "🔴" if row.get('Oncelik') == 'Yüksek' else "🔵"
+                    st.info(f"{oncelik_renk} **{row.get('Saat', '-')}** - {row.get('Gorev', '')} ({row.get('Tarih')})")
+            else:
+                st.write("Planlanmış görev yok.")
+        else:
+            st.info("Ajandanız boş. 'Ajanda' menüsünden ekleyebilirsiniz.")
 
-    # --- PORTFÖY ---
-    elif menu == "🏠 Portföy Yönetimi":
+    # --- SAYFA: AJANDA & GÖREVLER (YENİ) ---
+    elif menu == "📅 Ajanda & Görevler":
+        st.title("Kişisel Asistanım")
+        t1, t2 = st.tabs(["📋 Tüm Görevler", "➕ Yeni Görev Ekle"])
+        
+        with t1:
+            data_a, sheet_a = get_google_sheet_data("Ajanda")
+            if data_a:
+                df_a = pd.DataFrame(data_a)
+                
+                # Tabloyu Düzenlenebilir Yap (Status değiştirmek için)
+                st.dataframe(df_a, use_container_width=True)
+                
+                # Görev Silme / Tamamlama
+                st.write("---")
+                c_del, _ = st.columns([1,3])
+                with c_del:
+                    gorevler = df_a['Gorev'].tolist()
+                    silinecek = st.selectbox("Silinecek/Tamamlanan Görevi Seç", gorevler)
+                    if st.button("Görevi Sil / Arşivle"):
+                        delete_row_from_sheet(sheet_a, silinecek, col_index=3) # 3. Sütun 'Gorev'
+            else:
+                st.info("Henüz kayıtlı görev yok.")
+        
+        with t2:
+            st.markdown("### Yeni Hatırlatıcı Oluştur")
+            with st.form("yeni_gorev"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    tarih = st.date_input("Tarih")
+                    saat = st.time_input("Saat")
+                with c2:
+                    gorev = st.text_input("Görev / Hatırlatma Başlığı")
+                    oncelik = st.selectbox("Öncelik", ["Normal", "Yüksek", "Düşük"])
+                
+                if st.form_submit_button("Ajandaya Ekle"):
+                    t_str = tarih.strftime("%Y-%m-%d")
+                    s_str = saat.strftime("%H:%M")
+                    # Sütunlar: Tarih, Saat, Gorev, Durum, Oncelik
+                    row = [t_str, s_str, gorev, "Bekliyor", oncelik]
+                    _, sheet_a = get_google_sheet_data("Ajanda")
+                    if sheet_a: add_row_to_sheet(sheet_a, row)
+
+    # --- SAYFA: PORTFÖY ---
+    elif menu == "🏠 Portföy":
         st.title("Portföy Yönetimi")
-        t1, t2, t3 = st.tabs(["📋 Liste", "➕ Ekle", "🗑️ Sil"])
-        
+        t1, t2, t3 = st.tabs(["Galeri", "Ekle", "Sil"])
         with t1:
             data_p, _ = get_google_sheet_data("Portfoy")
             if data_p:
                 df = pd.DataFrame(data_p)
-                gm = st.toggle("Galeri Görünümü", value=True)
-                if gm:
-                    cols = st.columns(3)
-                    for index, row in df.iterrows():
-                        with cols[index % 3]:
-                            img = row.get('Gorsel', "")
-                            if not str(img).startswith('http'): img = "https://via.placeholder.com/300x200"
-                            st.image(img, use_container_width=True)
-                            st.markdown(f"**{row.get('Baslik','-')}**")
-                            st.caption(f"{row.get('Fiyat',0)} ₺ | {row.get('Konum','-')}")
-                else:
-                    st.dataframe(df, use_container_width=True)
-            else:
-                st.info("Portföy boş.")
-
+                cols = st.columns(3)
+                for index, row in df.iterrows():
+                    with cols[index % 3]:
+                        img = row.get('Gorsel', "")
+                        if not str(img).startswith('http'): img = "https://via.placeholder.com/300x200"
+                        st.image(img, use_container_width=True)
+                        st.markdown(f"**{row.get('Baslik','-')}**")
+                        st.caption(f"{row.get('Konum','-')} | {row.get('Fiyat',0)} ₺")
         with t2:
-            with st.form("add_p", clear_on_submit=True):
+            with st.form("add_p"):
                 c1, c2 = st.columns(2)
                 with c1:
                     baslik = st.text_input("Başlık")
-                    tip = st.selectbox("Tip", ["Daire", "Villa", "Arsa", "Ticari"])
+                    tip = st.selectbox("Tip", ["Daire", "Villa", "Ticari"])
                     fiyat = st.number_input("Fiyat", min_value=0)
                     konum = st.text_input("Konum")
                     gorsel = st.text_input("Görsel URL")
                 with c2:
                     m2 = st.number_input("M2", min_value=0)
-                    oda = st.selectbox("Oda", ["1+1", "2+1", "3+1", "4+1"])
+                    oda = st.selectbox("Oda", ["1+1","2+1","3+1","4+1"])
                     durum = st.selectbox("Durum", ["Satılık", "Kiralık"])
-                    e1, e2 = st.columns(2)
-                    enlem = e1.number_input("Enlem (41.xxx)", format="%.5f", value=41.28)
-                    boylam = e2.number_input("Boylam (36.xxx)", format="%.5f", value=36.33)
-                
+                    e1,e2=st.columns(2)
+                    enlem = e1.number_input("Enlem", format="%.5f", value=41.28)
+                    boylam = e2.number_input("Boylam", format="%.5f", value=36.33)
                 if st.form_submit_button("Kaydet"):
                     d = [datetime.now().strftime("%Y-%m-%d"), baslik, tip, fiyat, konum, m2, oda, durum, gorsel, enlem, boylam]
                     _, s = get_google_sheet_data("Portfoy")
                     if s: add_row_to_sheet(s, d)
-
         with t3:
-            data_p, sheet_p = get_google_sheet_data("Portfoy")
+            data_p, sp = get_google_sheet_data("Portfoy")
             if data_p:
-                df_del = pd.DataFrame(data_p)
-                sl = st.selectbox("Sil", df_del['Baslik'].tolist())
-                if st.button("Sil"): delete_row_from_sheet(sheet_p, sl)
+                sl = st.selectbox("Sil", pd.DataFrame(data_p)['Baslik'].tolist())
+                if st.button("Sil"): delete_row_from_sheet(sp, sl, 2)
 
-    # --- HARİTA (DÜZELTİLDİ) ---
-    elif menu == "🗺️ Harita & Analiz":
-        st.title("Harita Görünümü")
-        data_p, _ = get_google_sheet_data("Portfoy")
-        
-        if data_p:
-            df_map = pd.DataFrame(data_p)
-            
-            # --- KRİTİK DÜZELTME: Veri Temizliği ---
-            # Enlem ve Boylam sütunlarını güvenli şekilde sayıya çeviriyoruz
-            # Hatalı verileri (boş, harf vs.) siliyoruz (dropna)
-            if 'Enlem' in df_map.columns and 'Boylam' in df_map.columns:
-                try:
-                    df_map['lat'] = df_map['Enlem'].apply(clean_coordinates)
-                    df_map['lon'] = df_map['Boylam'].apply(clean_coordinates)
-                    
-                    # Koordinatı olmayan satırları harita için geçici olarak kaldır
-                    df_map = df_map.dropna(subset=['lat', 'lon'])
-                    
-                    if not df_map.empty:
-                        st.map(df_map, zoom=11, use_container_width=True)
-                    else:
-                        st.warning("Haritada gösterilecek geçerli koordinat verisi bulunamadı. Lütfen 'Portföy Yönetimi'nden enlem/boylam girdiğinizden emin olun.")
-                except Exception as e:
-                    st.error(f"Harita işlenirken hata oluştu: {e}")
-            else:
-                st.error("Google Sheets'te 'Enlem' ve 'Boylam' sütun başlıkları eksik.")
-        else:
-            st.info("Veri yok.")
-
-    # --- EŞLEŞME ---
-    elif menu == "🤖 Akıllı Eşleşme":
-        st.title("Eşleşme")
-        data_p, _ = get_google_sheet_data("Portfoy")
-        data_m, _ = get_google_sheet_data("Musteriler")
-        
-        if data_p and data_m:
-            df_p = pd.DataFrame(data_p)
-            df_m = pd.DataFrame(data_m)
-            mst = st.selectbox("Müşteri", df_m['Ad_Soyad'])
-            talep = df_m[df_m['Ad_Soyad'] == mst].iloc[0].get('Talep', '')
-            
-            st.info(f"Aranan: {talep}")
-            res = df_p[df_p['Durum'] == ('Satılık' if 'Satılık' in talep else 'Kiralık')]
-            if not res.empty:
-                st.dataframe(res[['Baslik','Fiyat','Konum']], use_container_width=True)
-            else:
-                st.warning("Eşleşme yok.")
-        else:
-            st.warning("Yetersiz veri.")
-
-    # --- MÜŞTERİLER (DÜZELTİLDİ) ---
+    # --- SAYFA: MÜŞTERİLER ---
     elif menu == "👥 Müşteriler":
         st.title("Müşteri Listesi")
-        t1, t2 = st.tabs(["📒 Liste", "➕ Ekle"])
-        
+        t1, t2 = st.tabs(["Liste", "Ekle"])
         with t1:
             data_m, _ = get_google_sheet_data("Musteriler")
             if data_m:
-                df_m = pd.DataFrame(data_m)
-                
-                # Sütun kontrolü (Hata vermemesi için)
-                required_cols = ['Ad_Soyad', 'Telefon', 'Talep', 'Notlar', 'Butce']
-                missing_cols = [c for c in required_cols if c not in df_m.columns]
-                
-                if not missing_cols:
-                    for i, row in df_m.iterrows():
-                        with st.expander(f"👤 {row['Ad_Soyad']} ({row['Talep']})"):
-                            c1, c2 = st.columns([3, 1])
-                            with c1:
-                                st.write(f"📞 {row['Telefon']}")
-                                st.write(f"📝 {row['Notlar']}")
-                                st.write(f"💰 {row['Butce']}")
-                            with c2:
-                                # Telefon temizliği ve link oluşturma
-                                raw_tel = clean_phone(row['Telefon'])
-                                if raw_tel:
-                                    # Başında 90 yoksa ekle (Türkiye için)
-                                    if not raw_tel.startswith("90"):
-                                        raw_tel = "90" + raw_tel
-                                    
-                                    msg = f"Merhaba {row['Ad_Soyad']} Bey/Hanım, REMAX'tan Baran ben."
-                                    wa_link = f"https://wa.me/{raw_tel}?text={msg}"
-                                    st.link_button("💬 WhatsApp", wa_link)
-                                else:
-                                    st.caption("No Tel")
-                else:
-                    st.error(f"Google Sheets başlıklarında eksik var: {missing_cols}")
-            else:
-                st.info("Müşteri yok.")
-
+                df = pd.DataFrame(data_m)
+                for i, r in df.iterrows():
+                    with st.expander(f"{r['Ad_Soyad']} ({r.get('Talep','-')})"):
+                        c1, c2 = st.columns([3,1])
+                        c1.write(f"📞 {r.get('Telefon')} | 📝 {r.get('Notlar')}")
+                        raw = clean_phone(r.get('Telefon'))
+                        if raw: 
+                            if not raw.startswith("90"): raw = "90"+raw
+                            c2.link_button("Whatsapp", f"https://wa.me/{raw}")
         with t2:
             with st.form("add_m"):
                 ad = st.text_input("Ad Soyad")
@@ -321,8 +334,33 @@ def main():
                 notlar = st.text_area("Notlar")
                 if st.form_submit_button("Kaydet"):
                     d = [datetime.now().strftime("%Y-%m-%d"), ad, tel, talep, butce, notlar]
-                    _, s = get_google_sheet_data("Musteriler")
-                    if s: add_row_to_sheet(s, d)
+                    _, sm = get_google_sheet_data("Musteriler")
+                    if sm: add_row_to_sheet(sm, d)
+
+    # --- HARİTA & EŞLEŞME (AYNI) ---
+    elif menu == "🗺️ Harita":
+        st.title("Harita")
+        data_p, _ = get_google_sheet_data("Portfoy")
+        if data_p:
+            df = pd.DataFrame(data_p)
+            try:
+                df['lat'] = df['Enlem'].apply(clean_coordinates)
+                df['lon'] = df['Boylam'].apply(clean_coordinates)
+                st.map(df.dropna(subset=['lat','lon']), zoom=11)
+            except: st.warning("Veri hatası")
+            
+    elif menu == "🤖 Eşleşme":
+        st.title("Akıllı Eşleşme")
+        data_p, _ = get_google_sheet_data("Portfoy")
+        data_m, _ = get_google_sheet_data("Musteriler")
+        if data_p and data_m:
+            df_p, df_m = pd.DataFrame(data_p), pd.DataFrame(data_m)
+            mst = st.selectbox("Müşteri", df_m['Ad_Soyad'])
+            talep = df_m[df_m['Ad_Soyad']==mst].iloc[0].get('Talep','')
+            st.info(f"Aranan: {talep}")
+            res = df_p[df_p['Durum']==('Satılık' if 'Satılık' in talep else 'Kiralık')]
+            if not res.empty: st.dataframe(res[['Baslik','Fiyat','Konum']], use_container_width=True)
+            else: st.warning("Eşleşme yok")
 
 if __name__ == "__main__":
     main()
