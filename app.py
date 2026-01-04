@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- 1. SAYFA AYARLARI (Modern Görünüm İçin İlk Adım) ---
 st.set_page_config(
-    page_title="REMAX/Park - Pro CRM",
+    page_title="BARAN Gayrimenkul Takip - Pro CRM",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
