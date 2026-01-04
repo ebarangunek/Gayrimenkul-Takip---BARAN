@@ -3,58 +3,20 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import time
 
-# --- 1. SAYFA AYARLARI (Modern Görünüm İçin İlk Adım) ---
+# --- 1. SAYFA AYARLARI ---
 st.set_page_config(
-    page_title="BARAN Gayrimenkul Takip - Pro CRM",
+    page_title="BARAN Gayrimenkul Takip - Pro OS",
     page_icon="🏢",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. CUSTOM CSS (Tasarım Sihri) ---
-# Burası uygulamanın "Makyaj" kısmıdır.
-def local_css():
-    st.markdown("""
-    <style>
-        /* Ana Arkaplan Rengi */
-        .stApp {
-            background-color: #0E1117;
-        }
-        /* Buton Tasarımları (Remax Kırmızısı) */
-        .stButton>button {
-            background-color: #DC3545;
-            color: white;
-            border-radius: 12px;
-            border: none;
-            padding: 10px 24px;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-        .stButton>button:hover {
-            background-color: #bb2d3b;
-            box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
-        }
-        /* Metrik Kartları */
-        div[data-testid="stMetric"] {
-            background-color: #262730;
-            padding: 15px;
-            border-radius: 10px;
-            border-left: 5px solid #004085; /* Remax Mavisi Çizgi */
-        }
-        /* Tablo Başlıkları */
-        thead tr th:first-child {display:none}
-        tbody th {display:none}
-    </style>
-    """, unsafe_allow_html=True)
-
-local_css()
-
-# --- 3. VERİTABANI BAĞLANTISI (Hatasız Versiyon) ---
+# --- 2. VERİTABANI BAĞLANTISI ---
 def get_google_sheet_data(sheet_name):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
-        # Cloud Secrets veya Yerel Dosya Kontrolü
         if "gcp_service_account" in st.secrets:
             creds_dict = st.secrets["gcp_service_account"]
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
@@ -72,367 +34,248 @@ def get_google_sheet_data(sheet_name):
 def add_row_to_sheet(sheet_object, row_data):
     try:
         sheet_object.append_row(row_data)
-        st.toast("✅ Kayıt Başarıyla Eklendi!", icon="🎉") # Modern bildirim
+        st.toast("✅ Kayıt Başarıyla Eklendi!", icon="🎉")
+        time.sleep(1)
     except Exception as e:
-        st.error(f"Hata: {e}")
+        st.error(f"Ekleme Hatası: {e}")
 
-# --- 4. ANA ARAYÜZ (DÜZELTİLMİŞ & HATASIZ) ---
-# --- 4. ANA ARAYÜZ (CALLBACK İLE DÜZELTİLMİŞ) ---
+# --- İLAN SİLME FONKSİYONU (YENİ) ---
+def delete_row_from_sheet(sheet_object, title_to_delete):
+    try:
+        # Başlık sütununu (2. sütun) al
+        titles = sheet_object.col_values(2) 
+        # Aranan başlığın satır numarasını bul (Listeler 0'dan başlar ama Sheets 1'den, o yüzden +1)
+        if title_to_delete in titles:
+            row_index = titles.index(title_to_delete) + 1
+            sheet_object.delete_rows(row_index)
+            st.toast(f"🗑️ '{title_to_delete}' başarıyla silindi!", icon="✅")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.warning("Silinecek kayıt bulunamadı.")
+    except Exception as e:
+        st.error(f"Silme Hatası: {e}")
+
+# --- 3. ANA ARAYÜZ ---
 def main():
-    # Sayfa hafızasını başlat
     if 'secili_menü' not in st.session_state:
         st.session_state.secili_menü = "📊 Dashboard"
 
-    # --- YARDIMCI FONKSİYON (CALLBACK) ---
-    # Bu fonksiyon butonlara basıldığında çalışacak
     def sayfa_degistir(hedef_sayfa):
         st.session_state.secili_menü = hedef_sayfa
 
-    # Yan Menü Tasarımı
+    # --- YAN MENÜ ---
     with st.sidebar:
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Remax_logo.svg/2560px-Remax_logo.svg.png", width=200)
-        st.write("---")
-        st.title("Danışman Paneli")
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Remax_logo.svg/2560px-Remax_logo.svg.png", width=180)
+        st.title("REMAX OS v2.0")
         
-        # Menü widget'ı session_state'e bağlı çalışır
         menu = st.radio(
-            "Navigasyon",
-            ["📊 Dashboard", "🏠 Portföy Yönetimi", "👥 Müşteri İlişkileri"],
+            "Menü",
+            ["📊 Dashboard", "🏠 Portföy Yönetimi", "🗺️ Harita & Analiz", "🤖 Akıllı Eşleşme", "👥 Müşteriler"],
             key="secili_menü"
         )
+        
         st.write("---")
-        st.info("💡 **İpucu:** Telefondan girerken 'Ana Ekrana Ekle' demeyi unutma.")
+        
+        # --- HEDEF TAKİPÇİSİ (GAMIFICATION) ---
+        st.subheader("🎯 Aylık Hedef")
+        hedef_ciro = 10000000 # 10 Milyon TL Portföy Hedefi
+        
+        # Anlık veriyi çekip hesaplayalım
+        data_p, _ = get_google_sheet_data("Portfoy")
+        mevcut_ciro = 0
+        if data_p:
+            df_temp = pd.DataFrame(data_p)
+            if 'Fiyat' in df_temp.columns:
+                 # Fiyat temizliği
+                 mevcut_ciro = pd.to_numeric(df_temp['Fiyat'].astype(str).str.replace(r'[^\d]', '', regex=True), errors='coerce').sum()
+        
+        progress = min(mevcut_ciro / hedef_ciro, 1.0)
+        st.progress(progress)
+        st.caption(f"Hedef: {(mevcut_ciro/1000000):.1f}M / {(hedef_ciro/1000000):.1f}M TL")
+        if progress >= 1.0:
+            st.balloons()
 
-    # --- SAYFA: DASHBOARD ---
+    # --- SAYFA 1: DASHBOARD ---
     if menu == "📊 Dashboard":
-        st.title("Hoş Geldin, Baran Günek 👋")
-        st.markdown("Bugünün özeti ve performans durumu.")
+        st.title("Yönetim Paneli")
         
         data_p, _ = get_google_sheet_data("Portfoy")
         data_m, _ = get_google_sheet_data("Musteriler")
         
-        df_p = pd.DataFrame(data_p) if data_p else pd.DataFrame()
-        
-        # Hesaplamalar
-        toplam_portfoy = len(data_p)
-        toplam_musteri = len(data_m)
-        toplam_deger = 0
-        if not df_p.empty and 'Fiyat' in df_p.columns:
-             try:
-                 temiz_fiyat = df_p['Fiyat'].astype(str).str.replace('₺', '').str.replace('.', '').str.replace(',', '')
-                 toplam_deger = pd.to_numeric(temiz_fiyat, errors='coerce').sum()
-             except:
-                 toplam_deger = 0
-
-        # Metrikler
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("📦 Toplam Portföy", f"{toplam_portfoy} Adet", delta="Aktif")
+            st.metric("📦 Aktif İlan", len(data_p))
         with col2:
-            st.metric("👥 Kayıtlı Müşteri", f"{toplam_musteri} Kişi", delta="+Yeni")
+            st.metric("👥 Müşteri", len(data_m))
         with col3:
-            milyon_deger = toplam_deger / 1_000_000 if toplam_deger else 0
-            st.metric("💰 Portföy Değeri", f"{milyon_deger:.1f} M₺", delta="Tahmini")
+            # Tahmini Komisyon (%2 + KDV varsayımı)
+            komisyon = mevcut_ciro * 0.02
+            st.metric("💰 Beklenen Hizmet Bedeli", f"{komisyon/1000:,.0f}k ₺")
+        with col4:
+            st.metric("📅 Hatırlatmalar", "3 Adet", delta="Bugün")
 
-        # --- HIZLI İŞLEMLER (BURASI DEĞİŞTİ) ---
-        st.write("---")
-        st.subheader("🚀 Hızlı İşlemler")
+        # --- AKILLI HATIRLATICI (Smart Reminders) ---
+        st.subheader("🔔 Yaklaşan Görevler")
+        # Basit bir hatırlatıcı demosu
+        with st.expander("Hatırlatıcıları Göster", expanded=True):
+            st.info("📞 Ahmet Bey (Yatırımcı) aranacak - Bugün 14:00")
+            st.warning("🔑 Atakum 3+1 Daire anahtarı teslim alınacak - Yarın")
+
+        # Hızlı Butonlar
         c1, c2 = st.columns(2)
         with c1:
-            # on_click parametresi ile fonksiyonu çağırıyoruz
-            st.button(
-                "➕ Hızlı Portföy Ekle", 
-                use_container_width=True,
-                on_click=sayfa_degistir, 
-                args=("🏠 Portföy Yönetimi",) # Fonksiyona gidecek parametre
-            )
+            st.button("➕ Hızlı İlan Ekle", on_click=sayfa_degistir, args=("🏠 Portföy Yönetimi",), use_container_width=True)
         with c2:
-             st.button(
-                 "🔍 Müşteri Ara", 
-                 use_container_width=True,
-                 on_click=sayfa_degistir,
-                 args=("👥 Müşteri İlişkileri",)
-             )
+            st.button("🔍 Eşleşme Bul", on_click=sayfa_degistir, args=("🤖 Akıllı Eşleşme",), use_container_width=True)
 
-    # --- SAYFA: PORTFÖY YÖNETİMİ ---
+    # --- SAYFA 2: PORTFÖY YÖNETİMİ (SİLME ÖZELLİKLİ) ---
     elif menu == "🏠 Portföy Yönetimi":
-        st.title("Portföy Yönetimi")
-        tab1, tab2 = st.tabs(["📋 Portföy Listesi", "➕ Yeni Ekle"])
+        st.title("Portföy İşlemleri")
         
-        with tab1:
-            data_p, _ = get_google_sheet_data("Portfoy")
-            if data_p:
-                df = pd.DataFrame(data_p)
-                st.data_editor(
-                    df,
-                    column_config={
-                        "Fiyat": st.column_config.NumberColumn("Fiyat (TL)", format="%d ₺"),
-                        "Tip": st.column_config.SelectboxColumn("Tip", options=["Daire", "Villa", "Arsa", "Ticari"], required=True),
-                        "Durum": st.column_config.SelectboxColumn("Durum", options=["Satılık", "Kiralık"], width="small", required=True),
-                        "M2": st.column_config.ProgressColumn("Büyüklük (m2)", format="%f m²", min_value=0, max_value=500),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                    num_rows="dynamic"
-                )
-            else:
-                st.info("Henüz portföy yok.")
-
-        with tab2:
-            st.subheader("Yeni Portföy Oluştur")
-            with st.form("portfoy_form", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                with c1:
-                    baslik = st.text_input("İlan Başlığı")
-                    tip = st.selectbox("Mülk Tipi", ["Daire", "Villa", "Arsa", "Ticari"])
-                    fiyat = st.number_input("Fiyat", min_value=0, step=1000)
-                    konum = st.text_input("Konum")
-                with c2:
-                    m2 = st.number_input("M2", min_value=0)
-                    oda = st.selectbox("Oda", ["1+1", "2+1", "3+1", "4+1", "Villa", "Diğer"])
-                    durum = st.selectbox("Durum", ["Satılık", "Kiralık"])
-                
-                if st.form_submit_button("Kaydet ve Yayınla"):
-                    tarih = datetime.now().strftime("%Y-%m-%d")
-                    new_data = [tarih, baslik, tip, fiyat, konum, m2, oda, durum]
-                    _, sheet = get_google_sheet_data("Portfoy")
-                    add_row_to_sheet(sheet, new_data)
-
-    # --- SAYFA: MÜŞTERİ İLİŞKİLERİ ---
-    elif menu == "👥 Müşteri İlişkileri":
-        st.title("Müşteri Veritabanı")
-        tab_m1, tab_m2 = st.tabs(["🔍 Müşteri Bul", "Müşteri Ekle"])
-        
-        with tab_m1:
-            data_m, _ = get_google_sheet_data("Musteriler")
-            if data_m:
-                df_m = pd.DataFrame(data_m)
-                search_term = st.text_input("🔍 İsim veya Telefon ile ara:", "")
-                if search_term:
-                    filtered_df = df_m[
-                        df_m['Ad_Soyad'].str.contains(search_term, case=False) | 
-                        df_m['Telefon'].str.contains(search_term, case=False)
-                    ]
-                    st.dataframe(filtered_df, use_container_width=True)
-                else:
-                    st.dataframe(df_m, use_container_width=True)
-            else:
-                st.warning("Müşteri listeniz boş.")
-
-        with tab_m2:
-            st.markdown("### 📝 Yeni Müşteri Kartı")
-            with st.form("musteri_form", clear_on_submit=True):
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    ad = st.text_input("Ad Soyad")
-                    tel = st.text_input("Telefon")
-                    talep = st.selectbox("Talep", ["Satılık Daire", "Kiralık Daire", "Arsa/Yatırım", "Satıcı"])
-                with col_b:
-                    butce = st.text_input("Bütçe Aralığı")
-                    notlar = st.text_area("Müşteri Notları")
-                
-                if st.form_submit_button("Müşteriyi Sisteme İşle"):
-                    tarih = datetime.now().strftime("%Y-%m-%d")
-                    new_cust = [tarih, ad, tel, talep, butce, notlar]
-                    _, sheet_m = get_google_sheet_data("Musteriler")
-                    add_row_to_sheet(sheet_m, new_cust)
-
-    # --- SAYFA: PORTFÖY YÖNETİMİ ---
-    elif menu == "🏠 Portföy Yönetimi":
-        st.title("Portföy Yönetimi")
-        tab1, tab2 = st.tabs(["📋 Portföy Listesi", "➕ Yeni Ekle"])
-        
-        with tab1:
-            data_p, _ = get_google_sheet_data("Portfoy")
-            if data_p:
-                df = pd.DataFrame(data_p)
-                st.data_editor(
-                    df,
-                    column_config={
-                        "Fiyat": st.column_config.NumberColumn("Fiyat (TL)", format="%d ₺"),
-                        "Tip": st.column_config.SelectboxColumn("Tip", options=["Daire", "Villa", "Arsa", "Ticari"], required=True),
-                        "Durum": st.column_config.SelectboxColumn("Durum", options=["Satılık", "Kiralık"], width="small", required=True),
-                        "M2": st.column_config.ProgressColumn("Büyüklük (m2)", format="%f m²", min_value=0, max_value=500),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                    num_rows="dynamic"
-                )
-            else:
-                st.info("Henüz portföy yok.")
-
-        with tab2:
-            st.subheader("Yeni Portföy Oluştur")
-            with st.form("portfoy_form", clear_on_submit=True):
-                c1, c2 = st.columns(2)
-                with c1:
-                    baslik = st.text_input("İlan Başlığı")
-                    tip = st.selectbox("Mülk Tipi", ["Daire", "Villa", "Arsa", "Ticari"])
-                    fiyat = st.number_input("Fiyat", min_value=0, step=1000)
-                    konum = st.text_input("Konum")
-                with c2:
-                    m2 = st.number_input("M2", min_value=0)
-                    oda = st.selectbox("Oda", ["1+1", "2+1", "3+1", "4+1", "Villa", "Diğer"])
-                    durum = st.selectbox("Durum", ["Satılık", "Kiralık"])
-                
-                if st.form_submit_button("Kaydet ve Yayınla"):
-                    tarih = datetime.now().strftime("%Y-%m-%d")
-                    new_data = [tarih, baslik, tip, fiyat, konum, m2, oda, durum]
-                    _, sheet = get_google_sheet_data("Portfoy")
-                    add_row_to_sheet(sheet, new_data)
-
-    # --- SAYFA: MÜŞTERİ İLİŞKİLERİ ---
-    elif menu == "👥 Müşteri İlişkileri":
-        st.title("Müşteri Veritabanı")
-        tab_m1, tab_m2 = st.tabs(["🔍 Müşteri Bul", "busts_in_silhouette Müşteri Ekle"])
-        
-        with tab_m1:
-            data_m, _ = get_google_sheet_data("Musteriler")
-            if data_m:
-                df_m = pd.DataFrame(data_m)
-                search_term = st.text_input("🔍 İsim veya Telefon ile ara:", "")
-                if search_term:
-                    filtered_df = df_m[
-                        df_m['Ad_Soyad'].str.contains(search_term, case=False) | 
-                        df_m['Telefon'].str.contains(search_term, case=False)
-                    ]
-                    st.dataframe(filtered_df, use_container_width=True)
-                else:
-                    st.dataframe(df_m, use_container_width=True)
-            else:
-                st.warning("Müşteri listeniz boş.")
-
-        with tab_m2:
-            st.markdown("### 📝 Yeni Müşteri Kartı")
-            with st.form("musteri_form", clear_on_submit=True):
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    ad = st.text_input("Ad Soyad")
-                    tel = st.text_input("Telefon")
-                    talep = st.selectbox("Talep", ["Satılık Daire", "Kiralık Daire", "Arsa/Yatırım", "Satıcı"])
-                with col_b:
-                    butce = st.text_input("Bütçe Aralığı")
-                    notlar = st.text_area("Müşteri Notları")
-                
-                if st.form_submit_button("Müşteriyi Sisteme İşle"):
-                    tarih = datetime.now().strftime("%Y-%m-%d")
-                    new_cust = [tarih, ad, tel, talep, butce, notlar]
-                    _, sheet_m = get_google_sheet_data("Musteriler")
-                    add_row_to_sheet(sheet_m, new_cust)
-    
-    # --- SAYFA: PORTFÖY YÖNETİMİ ---
-    elif menu == "🏠 Portföy Yönetimi":
-        st.title("Portföy Yönetimi")
-        
-        # Sekmeli Yapı (Tabs) - Çok daha modern
-        tab1, tab2 = st.tabs(["📋 Portföy Listesi", "➕ Yeni Ekle"])
+        tab1, tab2, tab3 = st.tabs(["📋 Liste & Galeri", "➕ Yeni Ekle", "🗑️ İlan Sil"])
         
         with tab1:
             data_p, _ = get_google_sheet_data("Portfoy")
             if data_p:
                 df = pd.DataFrame(data_p)
                 
-                # --- MODERN TABLO GÖRÜNÜMÜ ---
-                # column_config ile tabloyu özelleştiriyoruz
-                st.data_editor(
-                    df,
-                    column_config={
-                        "Fiyat": st.column_config.NumberColumn(
-                            "Fiyat (TL)",
-                            help="Mülkün satış/kiralama fiyatı",
-                            format="%d ₺",  # Para birimi formatı
-                        ),
-                        "Tip": st.column_config.SelectboxColumn(
-                            "Tip",
-                            options=["Daire", "Villa", "Arsa", "Ticari"],
-                            required=True,
-                        ),
-                        "Durum": st.column_config.SelectboxColumn(
-                            "Durum",
-                            options=["Satılık", "Kiralık"],
-                            width="small",
-                            required=True,
-                        ),
-                        "M2": st.column_config.ProgressColumn(
-                            "Büyüklük (m2)",
-                            format="%f m²",
-                            min_value=0,
-                            max_value=500, # Bar doluluk oranı için
-                        ),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                    num_rows="dynamic" # Satır eklemeye izin ver
-                )
+                # Fotoğraf Galerisi Modu
+                galeri_modu = st.toggle("Galeri Görünümü Aç 🖼️")
+                
+                if galeri_modu:
+                    cols = st.columns(3)
+                    for index, row in df.iterrows():
+                        with cols[index % 3]:
+                            # Eğer görsel linki yoksa placeholder koy
+                            img_link = row['Gorsel'] if str(row['Gorsel']).startswith('http') else "https://via.placeholder.com/300x200?text=Gorsel+Yok"
+                            st.image(img_link, use_container_width=True)
+                            st.subheader(f"{row['Fiyat']:,} ₺")
+                            st.caption(f"{row['Baslik']} - {row['Konum']}")
+                else:
+                    # Klasik Liste
+                    st.dataframe(df, use_container_width=True)
             else:
-                st.info("Henüz portföy yok.")
+                st.info("Portföy boş.")
 
         with tab2:
-            st.subheader("Yeni Portföy Oluştur")
-            with st.form("portfoy_form", clear_on_submit=True):
+            with st.form("yeni_ilan"):
                 c1, c2 = st.columns(2)
                 with c1:
-                    baslik = st.text_input("İlan Başlığı")
-                    tip = st.selectbox("Mülk Tipi", ["Daire", "Villa", "Arsa", "Ticari"])
-                    fiyat = st.number_input("Fiyat", min_value=0, step=1000)
-                    konum = st.text_input("Konum")
+                    baslik = st.text_input("Başlık")
+                    tip = st.selectbox("Tip", ["Daire", "Villa", "Arsa", "Ticari"])
+                    fiyat = st.number_input("Fiyat", min_value=0)
+                    konum = st.text_input("Konum (Mahalle)")
+                    gorsel = st.text_input("Görsel Linki (URL)")
                 with c2:
                     m2 = st.number_input("M2", min_value=0)
-                    oda = st.selectbox("Oda", ["1+1", "2+1", "3+1", "4+1", "Villa", "Diğer"])
+                    oda = st.selectbox("Oda", ["1+1", "2+1", "3+1", "4+1", "Diğer"])
                     durum = st.selectbox("Durum", ["Satılık", "Kiralık"])
-                
-                if st.form_submit_button("Kaydet ve Yayınla"):
+                    col_lat, col_lon = st.columns(2)
+                    enlem = col_lat.number_input("Enlem (Lat)", format="%.6f", value=41.28667)
+                    boylam = col_lon.number_input("Boylam (Lon)", format="%.6f", value=36.33)
+
+                if st.form_submit_button("Kaydet"):
                     tarih = datetime.now().strftime("%Y-%m-%d")
-                    # DİKKAT: Sıralama Google Sheets sütun sırasıyla aynı olmalı
-                    new_data = [tarih, baslik, tip, fiyat, konum, m2, oda, durum]
-                    
+                    # DİKKAT: Sheets sırasıyla aynı olmalı
+                    new_data = [tarih, baslik, tip, fiyat, konum, m2, oda, durum, gorsel, enlem, boylam]
                     _, sheet = get_google_sheet_data("Portfoy")
                     add_row_to_sheet(sheet, new_data)
 
-    # --- SAYFA: MÜŞTERİ İLİŞKİLERİ ---
-    elif menu == "👥 Müşteri İlişkileri":
-        st.title("Müşteri Veritabanı")
-        
-        tab_m1, tab_m2 = st.tabs(["🔍 Müşteri Bul", "busts_in_silhouette Müşteri Ekle"])
-        
-        with tab_m1:
-            data_m, _ = get_google_sheet_data("Musteriler")
-            if data_m:
-                df_m = pd.DataFrame(data_m)
+        with tab3:
+            st.error("DİKKAT: Bu işlem geri alınamaz!")
+            data_p, sheet_p = get_google_sheet_data("Portfoy")
+            if data_p:
+                df_del = pd.DataFrame(data_p)
+                # Selectbox ile silinecek ilanı seçtiriyoruz
+                silinecek_baslik = st.selectbox("Silinecek İlanı Seçin:", df_del['Baslik'].tolist())
                 
-                # Arama Kutusu
-                search_term = st.text_input("🔍 İsim veya Telefon ile ara:", "")
-                
-                if search_term:
-                    # Büyük/Küçük harf duyarsız arama
-                    filtered_df = df_m[
-                        df_m['Ad_Soyad'].str.contains(search_term, case=False) | 
-                        df_m['Telefon'].str.contains(search_term, case=False)
-                    ]
-                    st.dataframe(filtered_df, use_container_width=True)
-                else:
-                    st.dataframe(df_m, use_container_width=True)
-            else:
-                st.warning("Müşteri listeniz boş.")
+                if st.button("Seçili İlanı Veritabanından Sil 🗑️"):
+                    delete_row_from_sheet(sheet_p, silinecek_baslik)
 
-        with tab_m2:
-            with st.container():
-                st.markdown("### 📝 Yeni Müşteri Kartı")
-                with st.form("musteri_form", clear_on_submit=True):
-                    col_a, col_b = st.columns(2)
-                    with col_a:
-                        ad = st.text_input("Ad Soyad")
-                        tel = st.text_input("Telefon (5XX...)")
-                        talep = st.selectbox("Talep", ["Satılık Daire", "Kiralık Daire", "Arsa/Yatırım", "Satıcı"])
-                    with col_b:
-                        butce = st.text_input("Bütçe Aralığı")
-                        notlar = st.text_area("Müşteri Notları", height=100)
-                    
-                    if st.form_submit_button("Müşteriyi Sisteme İşle"):
-                        tarih = datetime.now().strftime("%Y-%m-%d")
-                        new_cust = [tarih, ad, tel, talep, butce, notlar]
-                        _, sheet_m = get_google_sheet_data("Musteriler")
-                        add_row_to_sheet(sheet_m, new_cust)
+    # --- SAYFA 3: HARİTA & ANALİZ ---
+    elif menu == "🗺️ Harita & Analiz":
+        st.title("Lokasyon ve Piyasa Analizi")
+        
+        col_map, col_analiz = st.columns([2, 1])
+        
+        with col_map:
+            st.subheader("📍 Portföy Haritası")
+            data_p, _ = get_google_sheet_data("Portfoy")
+            if data_p:
+                df_map = pd.DataFrame(data_p)
+                # Enlem ve Boylam sütunlarını sayıya çevirmeyi dene
+                try:
+                    df_map['lat'] = pd.to_numeric(df_map['Enlem'])
+                    df_map['lon'] = pd.to_numeric(df_map['Boylam'])
+                    st.map(df_map, zoom=12)
+                except:
+                    st.warning("Harita verisi için Enlem/Boylam sütunlarını kontrol edin.")
+            else:
+                st.write("Veri yok.")
+
+        with col_analiz:
+            st.subheader("📉 Rakip Analizi (Manuel)")
+            st.info("Sahibinden.com verilerini otomatik çekmek yasal kısıtlamalara tabidir. Burayı kendi pazar notlarınız için kullanabilirsiniz.")
+            
+            bolge = st.selectbox("Bölge Seç", ["Atakum", "İlkadım", "Canik"])
+            ort_fiyat = st.number_input("Piyasa Ort. Fiyat (m2)", value=25000)
+            benim_fiyat = st.number_input("Benim Ort. Fiyatım", value=23000)
+            
+            fark = ((benim_fiyat - ort_fiyat) / ort_fiyat) * 100
+            
+            if fark < 0:
+                st.success(f"Piyasadan %{abs(fark):.1f} daha UCUZSUNUZ! 🔥")
+            else:
+                st.error(f"Piyasadan %{fark:.1f} daha PAHALISINIZ!")
+
+    # --- SAYFA 4: AKILLI EŞLEŞME (MATCHMAKER) ---
+    elif menu == "🤖 Akıllı Eşleşme":
+        st.title("Smart Matchmaker ⚡")
+        st.markdown("Hangi müşterinize hangi ev uygun?")
+        
+        data_p, _ = get_google_sheet_data("Portfoy")
+        data_m, _ = get_google_sheet_data("Musteriler")
+        
+        if data_p and data_m:
+            df_p = pd.DataFrame(data_p)
+            df_m = pd.DataFrame(data_m)
+            
+            # Eşleştirme Algoritması
+            musteri_sec = st.selectbox("Müşteri Seçin:", df_m['Ad_Soyad'])
+            
+            # Seçilen müşterinin bilgilerini bul
+            secilen_m = df_m[df_m['Ad_Soyad'] == musteri_sec].iloc[0]
+            talep = secilen_m['Talep'] # Örn: "Satılık Daire"
+            
+            st.write(f"**{musteri_sec}** için aranan kriter: `{talep}`")
+            st.divider()
+            
+            # Basit bir filtreleme (Talep tipine göre portföyde ara)
+            # Not: Daha zeki olması için müşteri bütçesi ile ilan fiyatını kıyaslayabiliriz.
+            
+            uygun_ilanlar = pd.DataFrame()
+            
+            if "Satılık" in talep:
+                uygun_ilanlar = df_p[df_p['Durum'] == 'Satılık']
+            elif "Kiralık" in talep:
+                uygun_ilanlar = df_p[df_p['Durum'] == 'Kiralık']
+            
+            if not uygun_ilanlar.empty:
+                st.success(f"🎉 {len(uygun_ilanlar)} Adet Uygun İlan Bulundu!")
+                st.dataframe(uygun_ilanlar[['Baslik', 'Fiyat', 'Konum', 'Oda']], use_container_width=True)
+            else:
+                st.warning("Şu an uygun ilan yok.")
+        else:
+            st.error("Yeterli veri yok.")
+
+    # --- SAYFA 5: MÜŞTERİLER ---
+    elif menu == "👥 Müşteriler":
+        st.title("Müşteri Veritabanı")
+        # Eski müşteri kodu buraya aynen gelebilir veya geliştirilebilir
+        data_m, _ = get_google_sheet_data("Musteriler")
+        if data_m:
+            st.dataframe(pd.DataFrame(data_m), use_container_width=True)
 
 if __name__ == "__main__":
     main()
